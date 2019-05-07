@@ -3,6 +3,7 @@ package v1alpha2
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -26,7 +27,7 @@ func (r *RedisFailover) Validate() error {
 	} else if r.Spec.Sentinel.Replicas < defaultSentinelNumber {
 		return errors.New("number of sentinels in spec is less than the minimum")
 	}
-
+	r.Spec.Password = strings.TrimSpace(r.Spec.Password)
 	if r.Spec.Redis.Image == "" {
 		r.Spec.Redis.Image = defaultRedisImage
 	}

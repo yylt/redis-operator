@@ -18,7 +18,7 @@ type RedisFailoverClient interface {
 	EnsureSentinelDeployment(rFailover *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) error
 	EnsureRedisStatefulset(rFailover *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) error
 	EnsureRedisService(rFailover *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) error
-	EnsureRedissService(rFailover *redisfailoverv1alpha2.RedisFailover, ownerRefs []metav1.OwnerReference) error
+	EnsureRedissService(rFailover *redisfailoverv1alpha2.RedisFailover,ownerRefs []metav1.OwnerReference) error
 	EnsureRedisShutdownConfigMap(rFailover *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) error
 	EnsureRedisConfigMap(rFailover *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) error
 	EnsureNotPresentRedisService(rFailover *redisfailoverv1alpha2.RedisFailover) error
@@ -77,14 +77,12 @@ func (r *RedisFailoverKubeClient) EnsureRedisStatefulset(rf *redisfailoverv1alph
 }
 
 // EnsureRedissService makes sure the redis statefulset service  in the desired state
-func (r *RedisFailoverKubeClient) EnsureRedissService(rFailover *redisfailoverv1alpha2.RedisFailover, ownerRefs []metav1.OwnerReference) error {
-	podslist, err := r.K8SService.GetStatefulSetPods(rFailover.Namespace, GetRedisName(rFailover))
-	if err != nil {
-		return err
-	}
-	ss := generateRedissService(rFailover, podslist, ownerRefs)
-	for _, s := range ss {
-		if err := r.K8SService.CreateIfNotExistsService(rFailover.Namespace, s); err != nil {
+func (r *RedisFailoverKubeClient) EnsureRedissService(rFailover *redisfailoverv1alpha2.RedisFailover,ownerRefs []metav1.OwnerReference) error{
+	podslist,err := r.K8SService.GetStatefulSetPods(rFailover.Namespace,GetRedisName(rFailover))
+	if err!=nil{return err}
+	ss := generateRedissService(rFailover, podslist,ownerRefs)
+	for _,s:=range ss{
+		if err:=r.K8SService.CreateIfNotExistsService(rFailover.Namespace, s);err!=nil{
 			return err
 		}
 	}

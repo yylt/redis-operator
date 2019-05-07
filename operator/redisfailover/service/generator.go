@@ -20,13 +20,14 @@ const (
 	redisStorageVolumeName               = "redis-data"
 
 	graceTime = 30
+	sentinelPort = 26379
 )
 
 func generateSentinelService(rf *redisfailoverv1alpha2.RedisFailover, labels map[string]string, ownerRefs []metav1.OwnerReference) *corev1.Service {
 	name := GetSentinelName(rf)
 	namespace := rf.Namespace
 
-	sentinelTargetPort := intstr.FromInt(26379)
+	sentinelTargetPort := intstr.FromInt(sentinelPort)
 	labels = util.MergeLabels(labels, generateLabels(sentinelRoleName, rf.Name))
 
 	return &corev1.Service{
@@ -41,7 +42,7 @@ func generateSentinelService(rf *redisfailoverv1alpha2.RedisFailover, labels map
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "sentinel",
-					Port:       26379,
+					Port:       sentinelPort,
 					TargetPort: sentinelTargetPort,
 					Protocol:   "TCP",
 				},
@@ -88,10 +89,6 @@ func generateSentinelConfigMap(rf *redisfailoverv1alpha2.RedisFailover, labels m
 	namespace := rf.Namespace
 
 	labels = util.MergeLabels(labels, generateLabels(sentinelRoleName, rf.Name))
-	sentinelConfigFileContent := `sentinel monitor mymaster 127.0.0.1 6379 2
-sentinel down-after-milliseconds mymaster 1000
-sentinel failover-timeout mymaster 3000
-sentinel parallel-syncs mymaster 2`
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -101,7 +98,7 @@ sentinel parallel-syncs mymaster 2`
 			OwnerReferences: ownerRefs,
 		},
 		Data: map[string]string{
-			sentinelConfigFileName: sentinelConfigFileContent,
+			sentinelConfigFileName: getRedisSentineConfig(rf.Spec.Password),
 		},
 	}
 }
@@ -111,10 +108,6 @@ func generateRedisConfigMap(rf *redisfailoverv1alpha2.RedisFailover, labels map[
 	namespace := rf.Namespace
 
 	labels = util.MergeLabels(labels, generateLabels(redisRoleName, rf.Name))
-	redisConfigFileContent := `slaveof 127.0.0.1 6379
-tcp-keepalive 60
-save 900 1
-save 300 10`
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -124,7 +117,7 @@ save 300 10`
 			OwnerReferences: ownerRefs,
 		},
 		Data: map[string]string{
-			redisConfigFileName: redisConfigFileContent,
+			redisConfigFileName: getRedisConfigData(rf.Spec.Password),
 		},
 	}
 }
@@ -134,11 +127,6 @@ func generateRedisShutdownConfigMap(rf *redisfailoverv1alpha2.RedisFailover, lab
 	namespace := rf.Namespace
 
 	labels = util.MergeLabels(labels, generateLabels(redisRoleName, rf.Name))
-	shutdownContent := `master=$(redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} --csv SENTINEL get-master-addr-by-name mymaster | tr ',' ' ' | tr -d '\"' |cut -d' ' -f1)
-redis-cli SAVE
-if [[ $master ==  $(hostname -i) ]]; then
-  redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} SENTINEL failover mymaster
-fi`
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -148,7 +136,7 @@ fi`
 			OwnerReferences: ownerRefs,
 		},
 		Data: map[string]string{
-			"shutdown.sh": shutdownContent,
+			"shutdown.sh": getRedisShudDownData(rf.Spec.Password),
 		},
 	}
 }
@@ -159,7 +147,6 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 
 	spec := rf.Spec
 	redisImage := getRedisImage(rf)
-	redisCommand := getRedisCommand(rf)
 	resources := getRedisResources(spec)
 	labels = util.MergeLabels(labels, generateLabels(redisRoleName, rf.Name))
 	volumeMounts := getRedisVolumeMounts(rf)
@@ -190,7 +177,6 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 						NodeAffinity:    rf.Spec.NodeAffinity,
 						PodAntiAffinity: createPodAntiAffinity(rf.Spec.HardAntiAffinity, labels),
 					},
-					Tolerations: rf.Spec.Tolerations,
 					Containers: []corev1.Container{
 						{
 							Name:            "redis",
@@ -204,7 +190,10 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 								},
 							},
 							VolumeMounts: volumeMounts,
-							Command:      redisCommand,
+							Command: []string{
+								"redis-server",
+								fmt.Sprintf("/redis/%s", redisConfigFileName),
+							},
 							ReadinessProbe: &corev1.Probe{
 								InitialDelaySeconds: graceTime,
 								TimeoutSeconds:      5,
@@ -213,7 +202,7 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 										Command: []string{
 											"sh",
 											"-c",
-											"redis-cli -h $(hostname) ping",
+											getRedisProbe(rf.Spec.Password),
 										},
 									},
 								},
@@ -226,7 +215,7 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 										Command: []string{
 											"sh",
 											"-c",
-											"redis-cli -h $(hostname) ping",
+											getRedisProbe(rf.Spec.Password),
 										},
 									},
 								},
@@ -265,33 +254,33 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 	return ss
 }
 
-//desc : setup redis service
-//params: rf,podlist,ownerRefs
-//return: []corev1.services,error
-func generateRedissService(rf *redisfailoverv1alpha2.RedisFailover, podls *corev1.PodList, ownerRefs []metav1.OwnerReference) []*corev1.Service {
+//desc : 创建每个redis service
+//params： rf，labels
+//return : []corev1.services,error
+func generateRedissService(rf *redisfailoverv1alpha2.RedisFailover, podls *corev1.PodList, ownerRefs []metav1.OwnerReference) []*corev1.Service{
 	var ss []*corev1.Service
-	for index, pod := range podls.Items {
-		ss = append(ss, &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            fmt.Sprintf("%s-%d", rf.Name, index),
-				Namespace:       rf.Namespace,
-				Labels:          pod.Labels,
-				OwnerReferences: ownerRefs,
-			},
+	for index,pod:=range podls.Items {
+		ss = append(ss,&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            fmt.Sprintf("%s-%d",rf.Name,index),
+			Namespace:       rf.Namespace,
+			Labels:          pod.Labels,
+			OwnerReferences: ownerRefs,
+		},
 
-			Spec: corev1.ServiceSpec{
-				Type:      corev1.ServiceTypeClusterIP,
-				ClusterIP: corev1.ClusterIPNone,
-				Ports: []corev1.ServicePort{
-					{
-						Port:       6379,
-						TargetPort: intstr.FromInt(6379),
-						Protocol:   corev1.ProtocolTCP,
-						Name:       exporterContainerName,
-					},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: corev1.ClusterIPNone,
+			Ports: []corev1.ServicePort{
+				{
+					Port:     6379,
+					TargetPort: intstr.FromInt(6379),
+					Protocol: corev1.ProtocolTCP,
+					Name:     exporterContainerName,
 				},
-				Selector: pod.Labels,
 			},
+			Selector: pod.Labels,
+		},
 		})
 	}
 	return ss
@@ -304,7 +293,6 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 
 	spec := rf.Spec
 	redisImage := getRedisImage(rf)
-	sentinelCommand := getSentinelCommand(rf)
 	resources := getSentinelResources(spec)
 	labels = util.MergeLabels(labels, generateLabels(sentinelRoleName, rf.Name))
 
@@ -329,7 +317,6 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 						NodeAffinity:    rf.Spec.NodeAffinity,
 						PodAntiAffinity: createPodAntiAffinity(rf.Spec.HardAntiAffinity, labels),
 					},
-					Tolerations: rf.Spec.Tolerations,
 					InitContainers: []corev1.Container{
 						{
 							Name:            "sentinel-config-copy",
@@ -353,11 +340,11 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 							Resources: corev1.ResourceRequirements{
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("16Mi"),
+									corev1.ResourceMemory: resource.MustParse("10Mi"),
 								},
 								Requests: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("16Mi"),
+									corev1.ResourceMemory: resource.MustParse("10Mi"),
 								},
 							},
 						},
@@ -370,7 +357,7 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "sentinel",
-									ContainerPort: 26379,
+									ContainerPort: sentinelPort,
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
@@ -380,7 +367,11 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 									MountPath: "/redis",
 								},
 							},
-							Command: sentinelCommand,
+							Command: []string{
+								"redis-server",
+								fmt.Sprintf("/redis/%s", sentinelConfigFileName),
+								"--sentinel",
+							},
 							ReadinessProbe: &corev1.Probe{
 								InitialDelaySeconds: graceTime,
 								TimeoutSeconds:      5,
@@ -389,7 +380,7 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 										Command: []string{
 											"sh",
 											"-c",
-											"redis-cli -h $(hostname) -p 26379 ping",
+											getRedisSentinelProbe(rf.Spec.Password),
 										},
 									},
 								},
@@ -402,7 +393,7 @@ func generateSentinelDeployment(rf *redisfailoverv1alpha2.RedisFailover, labels 
 										Command: []string{
 											"sh",
 											"-c",
-											"redis-cli -h $(hostname) -p 26379 ping",
+											getRedisSentinelProbe(rf.Spec.Password),
 										},
 									},
 								},
@@ -681,23 +672,66 @@ func getRedisDataVolumeName(rf *redisfailoverv1alpha2.RedisFailover) string {
 	}
 }
 
-func getRedisCommand(rf *redisfailoverv1alpha2.RedisFailover) []string {
-	if len(rf.Spec.Redis.Command) > 0 {
-		return rf.Spec.Redis.Command
-	}
-	return []string{
-		"redis-server",
-		fmt.Sprintf("/redis/%s", redisConfigFileName),
+
+func getRedisShudDownData(password string) string{
+	if password == ""{
+		return `master=$(redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} --csv SENTINEL get-master-addr-by-name mymaster | tr ',' ' ' | tr -d '\"' |cut -d' ' -f1)
+redis-cli SAVE
+if [[ $master ==  $(hostname -i) ]]; then
+  redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} SENTINEL failover mymaster
+fi`
+	}else{
+		return fmt.Sprintf(`master=$(redis-cli -a %s -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} --csv SENTINEL get-master-addr-by-name mymaster | tr ',' ' ' | tr -d '\"' |cut -d' ' -f1)
+redis-cli SAVE
+if [[ $master ==  $(hostname -i) ]]; then
+  redis-cli -a %s -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} SENTINEL failover mymaster
+fi`	,password,password)
 	}
 }
 
-func getSentinelCommand(rf *redisfailoverv1alpha2.RedisFailover) []string {
-	if len(rf.Spec.Sentinel.Command) > 0 {
-		return rf.Spec.Sentinel.Command
+func getRedisConfigData(password string) string{
+	if password==""{
+		return `slaveof 127.0.0.1 6379
+tcp-keepalive 60
+save 900 1
+save 300 10`
+	}else{
+		return fmt.Sprintf(`slaveof 127.0.0.1 6379
+tcp-keepalive 60
+save 900 1
+save 300 10
+requirepass %s
+masterauth %s`,password,password)
 	}
-	return []string{
-		"redis-server",
-		fmt.Sprintf("/redis/%s", sentinelConfigFileName),
-		"--sentinel",
+}
+
+func getRedisProbe(password string) string{
+	if password==""{
+		return "redis-cli -h $(hostname) ping"
+	}else{
+		return fmt.Sprintf("redis-cli -a %s -h $(hostname) ping",password)
+	}
+}
+
+func getRedisSentinelProbe(password string) string{
+	if password==""{
+		return fmt.Sprintf("redis-cli -h $(hostname) -p %d ping",sentinelPort)
+	}else{
+		return fmt.Sprintf("redis-cli -a %s -h $(hostname) -p %d  ping",password,sentinelPort)
+	}
+}
+
+func getRedisSentineConfig(password string) string{
+	if password==""{
+		return `sentinel monitor mymaster 127.0.0.1 6379 2
+sentinel down-after-milliseconds mymaster 1000
+sentinel failover-timeout mymaster 3000
+sentinel parallel-syncs mymaster 2`
+	}else{
+		return fmt.Sprintf(`sentinel monitor mymaster 127.0.0.1 6379 2
+sentinel down-after-milliseconds mymaster 1000
+sentinel failover-timeout mymaster 3000
+sentinel parallel-syncs mymaster 2
+sentinel auth-pass mymaster %s`,password)
 	}
 }

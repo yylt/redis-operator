@@ -18,6 +18,8 @@ type RedisFailover struct {
 
 // RedisFailoverSpec represents a Redis failover spec
 type RedisFailoverSpec struct {
+
+	Password string `json:"password,omitempty"`
 	// Redis defines its failover settings
 	Redis RedisSettings `json:"redis,omitempty"`
 

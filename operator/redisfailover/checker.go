@@ -12,7 +12,7 @@ const (
 	timeToPrepare = 2 * time.Minute
 )
 
-func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailover, rfs []metav1.OwnerReference) error {
+func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailover,rfs []metav1.OwnerReference) error {
 	// Number of redis is equal as the set on the RF spec
 	// Number of sentinel is equal as the set on the RF spec
 	// Check only one master
@@ -41,7 +41,7 @@ func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailo
 			return err
 		}
 		if len(redisesIP) == 1 {
-			if err := r.rfHealer.MakeMaster(redisesIP[0]); err != nil {
+			if err := r.rfHealer.MakeMaster(redisesIP[0],rf.Spec.Password); err != nil {
 				return err
 			}
 			break
@@ -79,7 +79,7 @@ func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailo
 			return err3
 		}
 	}
-	if err := r.rfService.EnsureRedissService(rf, rfs); err != nil {
+	if err:=r.rfService.EnsureRedissService(rf,rfs);err!=nil{
 		return err
 	}
 	redises, err := r.rfChecker.GetRedisesIPs(rf)
@@ -97,7 +97,7 @@ func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailo
 		return err
 	}
 	for _, sip := range sentinels {
-		if err := r.rfChecker.CheckSentinelMonitor(sip, master); err != nil {
+		if err := r.rfChecker.CheckSentinelMonitor(sip,rf.Spec.Password, master); err != nil {
 			r.logger.Debug("Sentinel is not monitoring the correct master")
 			if err := r.rfHealer.NewSentinelMonitor(sip, master, rf); err != nil {
 				r.mClient.SetClusterError(rf.Namespace, rf.Name)
@@ -108,7 +108,7 @@ func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailo
 	for _, sip := range sentinels {
 		if err := r.rfChecker.CheckSentinelNumberInMemory(sip, rf); err != nil {
 			r.logger.Debug("Sentinel has more sentinel in memory than spected")
-			if err := r.rfHealer.RestoreSentinel(sip); err != nil {
+			if err := r.rfHealer.RestoreSentinel(sip,rf.Spec.Password); err != nil {
 				return err
 			}
 		}
@@ -116,7 +116,7 @@ func (r *RedisFailoverHandler) CheckAndHeal(rf *redisfailoverv1alpha2.RedisFailo
 	for _, sip := range sentinels {
 		if err := r.rfChecker.CheckSentinelSlavesNumberInMemory(sip, rf); err != nil {
 			r.logger.Debug("Sentinel has more slaves in memory than spected")
-			if err := r.rfHealer.RestoreSentinel(sip); err != nil {
+			if err := r.rfHealer.RestoreSentinel(sip,rf.Spec.Password); err != nil {
 				return err
 			}
 		}

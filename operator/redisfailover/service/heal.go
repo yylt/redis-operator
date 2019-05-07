@@ -13,11 +13,11 @@ import (
 
 // RedisFailoverHeal defines the interface able to fix the problems on the redis failovers
 type RedisFailoverHeal interface {
-	MakeMaster(ip string) error
+	MakeMaster(ip,password string) error
 	SetOldestAsMaster(rFailover *redisfailoverv1alpha2.RedisFailover) error
 	SetMasterOnAll(masterIP string, rFailover *redisfailoverv1alpha2.RedisFailover) error
 	NewSentinelMonitor(ip string, monitor string, rFailover *redisfailoverv1alpha2.RedisFailover) error
-	RestoreSentinel(ip string) error
+	RestoreSentinel(ip,passwrod string) error
 	SetSentinelCustomConfig(ip string, rFailover *redisfailoverv1alpha2.RedisFailover) error
 	SetRedisCustomConfig(ip string, rFailover *redisfailoverv1alpha2.RedisFailover) error
 }
@@ -38,8 +38,8 @@ func NewRedisFailoverHealer(k8sService k8s.Services, redisClient redis.Client, l
 	}
 }
 
-func (r *RedisFailoverHealer) MakeMaster(ip string) error {
-	return r.redisClient.MakeMaster(ip)
+func (r *RedisFailoverHealer) MakeMaster(ip,password string) error {
+	return r.redisClient.MakeMaster(ip,password)
 }
 
 // SetOldestAsMaster puts all redis to the same master, choosen by order of appearance
@@ -62,12 +62,12 @@ func (r *RedisFailoverHealer) SetOldestAsMaster(rf *redisfailoverv1alpha2.RedisF
 		if newMasterIP == "" {
 			newMasterIP = pod.Status.PodIP
 			r.logger.Debugf("New master is %s with ip %s", pod.Name, newMasterIP)
-			if err := r.redisClient.MakeMaster(newMasterIP); err != nil {
+			if err := r.redisClient.MakeMaster(newMasterIP,rf.Spec.Password); err != nil {
 				return err
 			}
 		} else {
 			r.logger.Debugf("Making pod %s slave of %s", pod.Name, newMasterIP)
-			if err := r.redisClient.MakeSlaveOf(pod.Status.PodIP, newMasterIP); err != nil {
+			if err := r.redisClient.MakeSlaveOf(pod.Status.PodIP,rf.Spec.Password, newMasterIP); err != nil {
 				return err
 			}
 		}
@@ -84,12 +84,12 @@ func (r *RedisFailoverHealer) SetMasterOnAll(masterIP string, rf *redisfailoverv
 	for _, pod := range ssp.Items {
 		if pod.Status.PodIP == masterIP {
 			r.logger.Debugf("Ensure pod %s is master", pod.Name)
-			if err := r.redisClient.MakeMaster(masterIP); err != nil {
+			if err := r.redisClient.MakeMaster(masterIP,rf.Spec.Password); err != nil {
 				return err
 			}
 		} else {
 			r.logger.Debugf("Making pod %s slave of %s", pod.Name, masterIP)
-			if err := r.redisClient.MakeSlaveOf(pod.Status.PodIP, masterIP); err != nil {
+			if err := r.redisClient.MakeSlaveOf(pod.Status.PodIP,rf.Spec.Password, masterIP); err != nil {
 				return err
 			}
 		}
@@ -101,23 +101,23 @@ func (r *RedisFailoverHealer) SetMasterOnAll(masterIP string, rf *redisfailoverv
 func (r *RedisFailoverHealer) NewSentinelMonitor(ip string, monitor string, rf *redisfailoverv1alpha2.RedisFailover) error {
 	r.logger.Debug("Sentinel is not monitoring the correct master, changing...")
 	quorum := strconv.Itoa(int(getQuorum(rf)))
-	return r.redisClient.MonitorRedis(ip, monitor, quorum)
+	return r.redisClient.MonitorRedis(ip,rf.Spec.Password, monitor, quorum)
 }
 
 // RestoreSentinel clear the number of sentinels on memory
-func (r *RedisFailoverHealer) RestoreSentinel(ip string) error {
+func (r *RedisFailoverHealer) RestoreSentinel(ip,password string) error {
 	r.logger.Debugf("Restoring sentinel %s...", ip)
-	return r.redisClient.ResetSentinel(ip)
+	return r.redisClient.ResetSentinel(ip,password)
 }
 
 // SetSentinelCustomConfig will call sentinel to set the configuration given in config
 func (r *RedisFailoverHealer) SetSentinelCustomConfig(ip string, rf *redisfailoverv1alpha2.RedisFailover) error {
 	r.logger.Debugf("Setting the custom config on sentinel %s...", ip)
-	return r.redisClient.SetCustomSentinelConfig(ip, rf.Spec.Sentinel.CustomConfig)
+	return r.redisClient.SetCustomSentinelConfig(ip,rf.Spec.Password, rf.Spec.Sentinel.CustomConfig)
 }
 
 // SetRedisCustomConfig will call redis to set the configuration given in config
 func (r *RedisFailoverHealer) SetRedisCustomConfig(ip string, rf *redisfailoverv1alpha2.RedisFailover) error {
 	r.logger.Debugf("Setting the custom config on redis %s...", ip)
-	return r.redisClient.SetCustomRedisConfig(ip, rf.Spec.Redis.CustomConfig)
+	return r.redisClient.SetCustomRedisConfig(ip,rf.Spec.Password, rf.Spec.Redis.CustomConfig)
 }

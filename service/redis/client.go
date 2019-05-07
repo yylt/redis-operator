@@ -12,17 +12,17 @@ import (
 
 // Client defines the functions neccesary to connect to redis and sentinel to get or set what we nned
 type Client interface {
-	GetNumberSentinelsInMemory(ip string) (int32, error)
-	GetNumberSentinelSlavesInMemory(ip string) (int32, error)
-	ResetSentinel(ip string) error
-	GetSlaveOf(ip string) (string, error)
-	IsMaster(ip string) (bool, error)
-	MonitorRedis(ip string, monitor string, quorum string) error
-	MakeMaster(ip string) error
-	MakeSlaveOf(ip string, masterIP string) error
-	GetSentinelMonitor(ip string) (string, error)
-	SetCustomSentinelConfig(ip string, configs []string) error
-	SetCustomRedisConfig(ip string, configs []string) error
+	GetNumberSentinelsInMemory(ip,password string) (int32, error)
+	GetNumberSentinelSlavesInMemory(ip,password string) (int32, error)
+	ResetSentinel(ip,password string) error
+	GetSlaveOf(ip,password string) (string, error)
+	IsMaster(ip,password string) (bool, error)
+	MonitorRedis(ip,password string, monitor string, quorum string) error
+	MakeMaster(ip,password string) error
+	MakeSlaveOf(ip,password string, masterIP string) error
+	GetSentinelMonitor(ip,password string) (string, error)
+	SetCustomSentinelConfig(ip,password string, configs []string) error
+	SetCustomRedisConfig(ip,password string, configs []string) error
 }
 
 type client struct{}
@@ -41,6 +41,8 @@ const (
 	redisPort               = "6379"
 	sentinelPort            = "26379"
 	masterName              = "mymaster"
+	sentinelSetCommand      = "SENTINEL set %s %s"
+	redisSetCommand         = "CONFIG set %s"
 )
 
 var (
@@ -51,7 +53,7 @@ var (
 )
 
 // GetNumberSentinelsInMemory return the number of sentinels that the requested sentinel has
-func (c *client) GetNumberSentinelsInMemory(ip string) (int32, error) {
+func (c *client) GetNumberSentinelsInMemory(ip ,password string) (int32, error) {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -78,7 +80,7 @@ func (c *client) GetNumberSentinelsInMemory(ip string) (int32, error) {
 }
 
 // GetNumberSentinelsInMemory return the number of sentinels that the requested sentinel has
-func (c *client) GetNumberSentinelSlavesInMemory(ip string) (int32, error) {
+func (c *client) GetNumberSentinelSlavesInMemory(ip,password string) (int32, error) {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -113,7 +115,7 @@ func isSentinelReady(info string) error {
 }
 
 // ResetSentinel sends a sentinel reset * for the given sentinel
-func (c *client) ResetSentinel(ip string) error {
+func (c *client) ResetSentinel(ip,password string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -131,10 +133,10 @@ func (c *client) ResetSentinel(ip string) error {
 }
 
 // GetSlaveOf returns the master of the given redis, or nil if it's master
-func (c *client) GetSlaveOf(ip string) (string, error) {
+func (c *client) GetSlaveOf(ip,password string) (string, error) {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, redisPort),
-		Password: "",
+		Password: password,
 		DB:       0,
 	}
 	rClient := rediscli.NewClient(options)
@@ -150,10 +152,10 @@ func (c *client) GetSlaveOf(ip string) (string, error) {
 	return match[1], nil
 }
 
-func (c *client) IsMaster(ip string) (bool, error) {
+func (c *client) IsMaster(ip string,password string) (bool, error) {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, redisPort),
-		Password: "",
+		Password: password,
 		DB:       0,
 	}
 	rClient := rediscli.NewClient(options)
@@ -165,7 +167,7 @@ func (c *client) IsMaster(ip string) (bool, error) {
 	return strings.Contains(info, redisRoleMaster), nil
 }
 
-func (c *client) MonitorRedis(ip string, monitor string, quorum string) error {
+func (c *client) MonitorRedis(ip,password string, monitor string, quorum string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -175,7 +177,7 @@ func (c *client) MonitorRedis(ip string, monitor string, quorum string) error {
 	defer rClient.Close()
 	cmd := rediscli.NewBoolCmd("SENTINEL", "REMOVE", masterName)
 	rClient.Process(cmd)
-	// We'll continue even if it fails, the priority is to have the redises monitored
+	// We'll continue even if it fails, the priotity is to have the redises monitored
 	cmd = rediscli.NewBoolCmd("SENTINEL", "MONITOR", masterName, monitor, redisPort, quorum)
 	rClient.Process(cmd)
 	_, err := cmd.Result()
@@ -185,10 +187,10 @@ func (c *client) MonitorRedis(ip string, monitor string, quorum string) error {
 	return nil
 }
 
-func (c *client) MakeMaster(ip string) error {
+func (c *client) MakeMaster(ip,password string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, redisPort),
-		Password: "",
+		Password: password,
 		DB:       0,
 	}
 	rClient := rediscli.NewClient(options)
@@ -199,10 +201,10 @@ func (c *client) MakeMaster(ip string) error {
 	return nil
 }
 
-func (c *client) MakeSlaveOf(ip string, masterIP string) error {
+func (c *client) MakeSlaveOf(ip,password string, masterIP string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, redisPort),
-		Password: "",
+		Password: password,
 		DB:       0,
 	}
 	rClient := rediscli.NewClient(options)
@@ -213,7 +215,7 @@ func (c *client) MakeSlaveOf(ip string, masterIP string) error {
 	return nil
 }
 
-func (c *client) GetSentinelMonitor(ip string) (string, error) {
+func (c *client) GetSentinelMonitor(ip,password string) (string, error) {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -231,7 +233,7 @@ func (c *client) GetSentinelMonitor(ip string) (string, error) {
 	return masterIP, nil
 }
 
-func (c *client) SetCustomSentinelConfig(ip string, configs []string) error {
+func (c *client) SetCustomSentinelConfig(ip,password string, configs []string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, sentinelPort),
 		Password: "",
@@ -241,53 +243,45 @@ func (c *client) SetCustomSentinelConfig(ip string, configs []string) error {
 	defer rClient.Close()
 
 	for _, config := range configs {
-		param, value, err := c.getConfigParameters(config)
-		if err != nil {
-			return err
-		}
-		if err := c.applySentinelConfig(param, value, rClient); err != nil {
+		setCommand := fmt.Sprintf(sentinelSetCommand, masterName, config)
+		if err := c.applyConfig(setCommand, rClient); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *client) SetCustomRedisConfig(ip string, configs []string) error {
+func (c *client) SetCustomRedisConfig(ip,password string, configs []string) error {
 	options := &rediscli.Options{
 		Addr:     fmt.Sprintf("%s:%s", ip, redisPort),
-		Password: "",
+		Password: password,
 		DB:       0,
 	}
 	rClient := rediscli.NewClient(options)
 	defer rClient.Close()
 
 	for _, config := range configs {
-		param, value, err := c.getConfigParameters(config)
-		if err != nil {
-			return err
-		}
-		if err := c.applyRedisConfig(param, value, rClient); err != nil {
+		setCommand := fmt.Sprintf(redisSetCommand, config)
+		if err := c.applyConfig(setCommand, rClient); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *client) applyRedisConfig(parameter string, value string, rClient *rediscli.Client) error {
-	result := rClient.ConfigSet(parameter, value)
-	return result.Err()
-}
-
-func (c *client) applySentinelConfig(parameter string, value string, rClient *rediscli.Client) error {
-	cmd := rediscli.NewStatusCmd("SENTINEL", "set", masterName, parameter, value)
-	rClient.Process(cmd)
-	return cmd.Err()
-}
-
-func (c *client) getConfigParameters(config string) (parameter string, value string, err error) {
-	s := strings.Split(config, " ")
-	if len(s) < 2 {
-		return "", "", fmt.Errorf("configuration '%s' malformed", config)
+func (c *client) applyConfig(command string, rClient *rediscli.Client) error {
+	sc := strings.Split(command, " ")
+	// Required conversion due to language specifications
+	// https://golang.org/doc/faq#convert_slice_of_interface
+	s := make([]interface{}, len(sc))
+	for i, v := range sc {
+		s[i] = v
 	}
-	return s[0], strings.Join(s[1:], " "), nil
+
+	cmd := rediscli.NewBoolCmd(s...)
+	rClient.Process(cmd)
+	if _, err := cmd.Result(); err != nil {
+		return err
+	}
+	return nil
 }
