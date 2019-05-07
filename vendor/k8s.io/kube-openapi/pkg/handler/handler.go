@@ -220,7 +220,7 @@ func RegisterOpenAPIVersionedService(openapiSpec *spec.Swagger, servePath string
 	}
 
 	files := map[string]func() ([]byte, string, time.Time){
-		"application/json":                                           o.getSwaggerBytes,
+		"application/json": o.getSwaggerBytes,
 		"application/com.github.proto-openapi.spec.v2@v1.0+protobuf": o.getSwaggerPbBytes,
 	}
 

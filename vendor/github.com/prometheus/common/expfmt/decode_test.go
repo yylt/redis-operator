@@ -205,7 +205,7 @@ func TestProtoDecoder(t *testing.T) {
 				&model.Sample{
 					Metric: model.Metric{
 						model.MetricNameLabel: "request_duration_microseconds_bucket",
-						"le": "100",
+						"le":                  "100",
 					},
 					Value:     123,
 					Timestamp: testTime,
@@ -213,7 +213,7 @@ func TestProtoDecoder(t *testing.T) {
 				&model.Sample{
 					Metric: model.Metric{
 						model.MetricNameLabel: "request_duration_microseconds_bucket",
-						"le": "120",
+						"le":                  "120",
 					},
 					Value:     412,
 					Timestamp: testTime,
@@ -221,7 +221,7 @@ func TestProtoDecoder(t *testing.T) {
 				&model.Sample{
 					Metric: model.Metric{
 						model.MetricNameLabel: "request_duration_microseconds_bucket",
-						"le": "144",
+						"le":                  "144",
 					},
 					Value:     592,
 					Timestamp: testTime,
@@ -229,7 +229,7 @@ func TestProtoDecoder(t *testing.T) {
 				&model.Sample{
 					Metric: model.Metric{
 						model.MetricNameLabel: "request_duration_microseconds_bucket",
-						"le": "172.8",
+						"le":                  "172.8",
 					},
 					Value:     1524,
 					Timestamp: testTime,
@@ -237,7 +237,7 @@ func TestProtoDecoder(t *testing.T) {
 				&model.Sample{
 					Metric: model.Metric{
 						model.MetricNameLabel: "request_duration_microseconds_bucket",
-						"le": "+Inf",
+						"le":                  "+Inf",
 					},
 					Value:     2693,
 					Timestamp: testTime,

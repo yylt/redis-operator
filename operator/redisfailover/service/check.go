@@ -20,7 +20,7 @@ type RedisFailoverCheck interface {
 	CheckAllSlavesFromMaster(master string, rFailover *redisfailoverv1alpha2.RedisFailover) error
 	CheckSentinelNumberInMemory(sentinel string, rFailover *redisfailoverv1alpha2.RedisFailover) error
 	CheckSentinelSlavesNumberInMemory(sentinel string, rFailover *redisfailoverv1alpha2.RedisFailover) error
-	CheckSentinelMonitor(sentinel,password string, monitor string) error
+	CheckSentinelMonitor(sentinel, password string, monitor string) error
 	GetMasterIP(rFailover *redisfailoverv1alpha2.RedisFailover) (string, error)
 	GetNumberMasters(rFailover *redisfailoverv1alpha2.RedisFailover) (int, error)
 	GetRedisesIPs(rFailover *redisfailoverv1alpha2.RedisFailover) ([]string, error)
@@ -75,7 +75,7 @@ func (r *RedisFailoverChecker) CheckAllSlavesFromMaster(master string, rf *redis
 		return err
 	}
 	for _, rip := range rips {
-		slave, err := r.redisClient.GetSlaveOf(rip,rf.Spec.Password)
+		slave, err := r.redisClient.GetSlaveOf(rip, rf.Spec.Password)
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func (r *RedisFailoverChecker) CheckSentinelNumberInMemory(sentinel string, rf *
 		return err
 	}
 	for _, sip := range sips {
-		nSentinels, err := r.redisClient.GetNumberSentinelsInMemory(sip,rf.Spec.Password)
+		nSentinels, err := r.redisClient.GetNumberSentinelsInMemory(sip, rf.Spec.Password)
 		if err != nil {
 			return err
 		} else if nSentinels != rf.Spec.Sentinel.Replicas {
@@ -110,7 +110,7 @@ func (r *RedisFailoverChecker) CheckSentinelSlavesNumberInMemory(sentinel string
 		return err
 	}
 	for _, sip := range sips {
-		nSlaves, err := r.redisClient.GetNumberSentinelSlavesInMemory(sip,rf.Spec.Password)
+		nSlaves, err := r.redisClient.GetNumberSentinelSlavesInMemory(sip, rf.Spec.Password)
 		if err != nil {
 			return err
 		} else if nSlaves != rf.Spec.Sentinel.Replicas-1 {
@@ -121,8 +121,8 @@ func (r *RedisFailoverChecker) CheckSentinelSlavesNumberInMemory(sentinel string
 }
 
 // CheckSentinelMonitor controls if the sentinels are monitoring the expected master
-func (r *RedisFailoverChecker) CheckSentinelMonitor(sentinel,password string, monitor string) error {
-	actualMonitorIP, err := r.redisClient.GetSentinelMonitor(sentinel,password)
+func (r *RedisFailoverChecker) CheckSentinelMonitor(sentinel, password string, monitor string) error {
+	actualMonitorIP, err := r.redisClient.GetSentinelMonitor(sentinel, password)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (r *RedisFailoverChecker) GetMasterIP(rf *redisfailoverv1alpha2.RedisFailov
 	}
 	masters := []string{}
 	for _, rip := range rips {
-		master, err := r.redisClient.IsMaster(rip,rf.Spec.Password)
+		master, err := r.redisClient.IsMaster(rip, rf.Spec.Password)
 		if err != nil {
 			return "", err
 		}
@@ -163,7 +163,7 @@ func (r *RedisFailoverChecker) GetNumberMasters(rf *redisfailoverv1alpha2.RedisF
 		return nMasters, err
 	}
 	for _, rip := range rips {
-		master, err := r.redisClient.IsMaster(rip,rf.Spec.Password)
+		master, err := r.redisClient.IsMaster(rip, rf.Spec.Password)
 		if err != nil {
 			return nMasters, err
 		}

@@ -19,7 +19,7 @@ const (
 	redisShutdownConfigurationVolumeName = "redis-shutdown-config"
 	redisStorageVolumeName               = "redis-data"
 
-	graceTime = 30
+	graceTime    = 30
 	sentinelPort = 26379
 )
 
@@ -257,30 +257,30 @@ func generateRedisStatefulSet(rf *redisfailoverv1alpha2.RedisFailover, labels ma
 //desc : 创建每个redis service
 //params： rf，labels
 //return : []corev1.services,error
-func generateRedissService(rf *redisfailoverv1alpha2.RedisFailover, podls *corev1.PodList, ownerRefs []metav1.OwnerReference) []*corev1.Service{
+func generateRedissService(rf *redisfailoverv1alpha2.RedisFailover, podls *corev1.PodList, ownerRefs []metav1.OwnerReference) []*corev1.Service {
 	var ss []*corev1.Service
-	for index,pod:=range podls.Items {
-		ss = append(ss,&corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            fmt.Sprintf("%s-%d",rf.Name,index),
-			Namespace:       rf.Namespace,
-			Labels:          pod.Labels,
-			OwnerReferences: ownerRefs,
-		},
-
-		Spec: corev1.ServiceSpec{
-			Type:      corev1.ServiceTypeClusterIP,
-			ClusterIP: corev1.ClusterIPNone,
-			Ports: []corev1.ServicePort{
-				{
-					Port:     6379,
-					TargetPort: intstr.FromInt(6379),
-					Protocol: corev1.ProtocolTCP,
-					Name:     exporterContainerName,
-				},
+	for index, pod := range podls.Items {
+		ss = append(ss, &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            fmt.Sprintf("%s-%d", rf.Name, index),
+				Namespace:       rf.Namespace,
+				Labels:          pod.Labels,
+				OwnerReferences: ownerRefs,
 			},
-			Selector: pod.Labels,
-		},
+
+			Spec: corev1.ServiceSpec{
+				Type:      corev1.ServiceTypeClusterIP,
+				ClusterIP: corev1.ClusterIPNone,
+				Ports: []corev1.ServicePort{
+					{
+						Port:       6379,
+						TargetPort: intstr.FromInt(6379),
+						Protocol:   corev1.ProtocolTCP,
+						Name:       exporterContainerName,
+					},
+				},
+				Selector: pod.Labels,
+			},
 		})
 	}
 	return ss
@@ -672,66 +672,65 @@ func getRedisDataVolumeName(rf *redisfailoverv1alpha2.RedisFailover) string {
 	}
 }
 
-
-func getRedisShudDownData(password string) string{
-	if password == ""{
+func getRedisShudDownData(password string) string {
+	if password == "" {
 		return `master=$(redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} --csv SENTINEL get-master-addr-by-name mymaster | tr ',' ' ' | tr -d '\"' |cut -d' ' -f1)
 redis-cli SAVE
 if [[ $master ==  $(hostname -i) ]]; then
   redis-cli -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} SENTINEL failover mymaster
 fi`
-	}else{
+	} else {
 		return fmt.Sprintf(`master=$(redis-cli -a %s -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} --csv SENTINEL get-master-addr-by-name mymaster | tr ',' ' ' | tr -d '\"' |cut -d' ' -f1)
 redis-cli SAVE
 if [[ $master ==  $(hostname -i) ]]; then
   redis-cli -a %s -h ${RFS_REDIS_SERVICE_HOST} -p ${RFS_REDIS_SERVICE_PORT_SENTINEL} SENTINEL failover mymaster
-fi`	,password,password)
+fi`, password, password)
 	}
 }
 
-func getRedisConfigData(password string) string{
-	if password==""{
+func getRedisConfigData(password string) string {
+	if password == "" {
 		return `slaveof 127.0.0.1 6379
 tcp-keepalive 60
 save 900 1
 save 300 10`
-	}else{
+	} else {
 		return fmt.Sprintf(`slaveof 127.0.0.1 6379
 tcp-keepalive 60
 save 900 1
 save 300 10
 requirepass %s
-masterauth %s`,password,password)
+masterauth %s`, password, password)
 	}
 }
 
-func getRedisProbe(password string) string{
-	if password==""{
+func getRedisProbe(password string) string {
+	if password == "" {
 		return "redis-cli -h $(hostname) ping"
-	}else{
-		return fmt.Sprintf("redis-cli -a %s -h $(hostname) ping",password)
+	} else {
+		return fmt.Sprintf("redis-cli -a %s -h $(hostname) ping", password)
 	}
 }
 
-func getRedisSentinelProbe(password string) string{
-	if password==""{
-		return fmt.Sprintf("redis-cli -h $(hostname) -p %d ping",sentinelPort)
-	}else{
-		return fmt.Sprintf("redis-cli -a %s -h $(hostname) -p %d  ping",password,sentinelPort)
+func getRedisSentinelProbe(password string) string {
+	if password == "" {
+		return fmt.Sprintf("redis-cli -h $(hostname) -p %d ping", sentinelPort)
+	} else {
+		return fmt.Sprintf("redis-cli -a %s -h $(hostname) -p %d  ping", password, sentinelPort)
 	}
 }
 
-func getRedisSentineConfig(password string) string{
-	if password==""{
+func getRedisSentineConfig(password string) string {
+	if password == "" {
 		return `sentinel monitor mymaster 127.0.0.1 6379 2
 sentinel down-after-milliseconds mymaster 1000
 sentinel failover-timeout mymaster 3000
 sentinel parallel-syncs mymaster 2`
-	}else{
+	} else {
 		return fmt.Sprintf(`sentinel monitor mymaster 127.0.0.1 6379 2
 sentinel down-after-milliseconds mymaster 1000
 sentinel failover-timeout mymaster 3000
 sentinel parallel-syncs mymaster 2
-sentinel auth-pass mymaster %s`,password)
+sentinel auth-pass mymaster %s`, password)
 	}
 }
