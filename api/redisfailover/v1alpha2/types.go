@@ -15,7 +15,7 @@ type RedisFailover struct {
 	Spec              RedisFailoverSpec   `json:"spec"`
 	Status            RedisFailoverStatus `json:"status,omitempty"`
 }
-
+type KV map[string]string
 // RedisFailoverSpec represents a Redis failover spec
 type RedisFailoverSpec struct {
 	Password string `json:"password,omitempty"`
@@ -35,6 +35,8 @@ type RedisFailoverSpec struct {
 
 	//Tolerations provides a way to schedule Pods on Tainted Nodes
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	NodeSelector KV `json:"nodeSelector,omitempty"`
 }
 
 // RedisSettings defines the specification of the redis cluster
